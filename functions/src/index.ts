@@ -31,6 +31,7 @@ app.post('/checkDeprecated', (req, res) => {
 
     let deprecatedCount = 0;
     let packagesChecked = 0;
+    const totalPackages = packages.length;
     const deprecatedPackages: { [key: string]: string } = {};
 
     for (const pkg of packages) {
@@ -42,11 +43,23 @@ app.post('/checkDeprecated', (req, res) => {
                 deprecatedCount++;
             }
             packagesChecked++;
+
+            // Log the progress
+            const progress = ((packagesChecked / totalPackages) * 100).toFixed(2);
+            console.log(`Checking: ${pkg}... (${progress}% completed)`);
+            
+            // Thread-like animation (using ASCII characters to simulate a rotating spinner)
+            const spinner = ['|', '/', '-', '\\'];
+            console.log(`Working... ${spinner[packagesChecked % 4]}`);
+            
         } catch (error) {
             // Error occurs when npm cannot find info for a package
+            console.error(`Failed to check ${pkg}. Error:`, (error as Error).message);
             continue;
         }
     }
+
+    console.log(`Finished checking. Found ${deprecatedCount} deprecated packages out of ${totalPackages} checked.`);
 
     const response = {
         total_checked: packagesChecked,
@@ -61,4 +74,4 @@ app.get('/healthCheck', (req, res) => {
     res.status(200).json({ status: "Server is running" });
 });
 
-export const api = functions.https.onRequest(app);
+export const api = functions.runWith({ timeoutSeconds: 300 }).https.onRequest(app);

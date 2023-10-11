@@ -19,38 +19,44 @@ app.post('/checkDeprecated', (req, res) => {
         return;
     }
 
-    let packages: string[] = [];
+    let packages: { [key: string]: string } = {};
     if (data.dependencies) {
-        packages = Object.keys(data.dependencies);
-    } else if (data.devDependencies) {
-        packages = Object.keys(data.devDependencies);
-    } else {
+        packages = { ...packages, ...data.dependencies };
+    }
+    if (data.devDependencies) {
+        packages = { ...packages, ...data.devDependencies };
+    }
+
+    if (Object.keys(packages).length === 0) {
         res.status(400).send("No dependencies or devDependencies found in the provided data");
         return;
     }
 
     let deprecatedCount = 0;
-    let packagesChecked = 0;
-    const totalPackages = packages.length;
+    let outdatedCount = 0;
+    const totalPackages = Object.keys(packages).length;
     const deprecatedPackages: { [key: string]: string } = {};
+    const outdatedPackages: { [key: string]: string } = {};
 
-    for (const pkg of packages) {
-        const command = `npm info ${pkg} deprecated`;
+    for (const [pkg, version] of Object.entries(packages)) {
+        const commandDeprecated = `npm info ${pkg} deprecated`;
+        const commandLatest = `npm info ${pkg} version`;
         try {
-            const result = execSync(command, { encoding: 'utf8' }).trim();
-            if (result) {
-                deprecatedPackages[pkg] = result;
+            const deprecatedResult = execSync(commandDeprecated, { encoding: 'utf8' }).trim();
+            if (deprecatedResult) {
+                deprecatedPackages[pkg] = deprecatedResult;
                 deprecatedCount++;
             }
-            packagesChecked++;
+
+            const latestVersion = execSync(commandLatest, { encoding: 'utf8' }).trim();
+            if (latestVersion !== version) {
+                outdatedPackages[pkg] = latestVersion;
+                outdatedCount++;
+            }
 
             // Log the progress
-            const progress = ((packagesChecked / totalPackages) * 100).toFixed(2);
+            const progress = (((deprecatedCount + outdatedCount) / totalPackages) * 100).toFixed(2);
             console.log(`Checking: ${pkg}... (${progress}% completed)`);
-            
-            // Thread-like animation (using ASCII characters to simulate a rotating spinner)
-            const spinner = ['|', '/', '-', '\\'];
-            console.log(`Working... ${spinner[packagesChecked % 4]}`);
             
         } catch (error) {
             // Error occurs when npm cannot find info for a package
@@ -59,12 +65,14 @@ app.post('/checkDeprecated', (req, res) => {
         }
     }
 
-    console.log(`Finished checking. Found ${deprecatedCount} deprecated packages out of ${totalPackages} checked.`);
+    console.log(`Finished checking. Found ${deprecatedCount} deprecated and ${outdatedCount} outdated packages out of ${totalPackages} checked.`);
 
     const response = {
-        total_checked: packagesChecked,
+        total_checked: totalPackages,
         total_deprecated: deprecatedCount,
-        deprecated_packages: deprecatedPackages
+        total_outdated: outdatedCount,
+        deprecated_packages: deprecatedPackages,
+        outdated_packages: outdatedPackages
     };
 
     res.status(200).json(response);
